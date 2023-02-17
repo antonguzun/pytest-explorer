@@ -3,7 +3,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::process::Command;
+use std::{cmp::min, process::Command};
 use std::{error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -30,7 +30,7 @@ struct App {
     messages: Vec<String>,
     test_stdout: String,
     tests: Vec<String>,
-    test_cursor: u32,
+    test_cursor: usize,
 }
 
 impl App {
@@ -62,7 +62,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         .output()
         .expect("failed to execute process");
     let temp: String = String::from_utf8_lossy(&output.stdout).try_into().unwrap();
-    let tests: Vec<String> = temp.split("\n").map(|v| String::from(v)).collect();
+    let mut tests: Vec<String> = temp
+        .split("\n")
+        .map(|v| String::from(v))
+        .filter(|v| v.contains("test"))
+        .collect();
+    tests.pop();
     // create app and run it
     let app = App::new(tests);
 
@@ -104,18 +109,23 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         }
                     }
                     KeyCode::Down => {
-                        if app.test_cursor < u32::MAX {
+                        if app.test_cursor < min(usize::MAX, app.tests.len()) - 1 {
                             app.test_cursor = app.test_cursor + 1;
                         }
                     }
                     KeyCode::Enter => {
-                        let output = Command::new("pytest")
-                            .arg("--collect-only")
-                            .arg("-q")
-                            .output()
-                            .expect("failed to execute process");
-                        let temp: String =
-                            String::from_utf8_lossy(&output.stdout).try_into().unwrap();
+                        match app.tests.get(app.test_cursor) {
+                            Some(test_name) => {
+                                let output = Command::new("pytest")
+                                    .arg(test_name)
+                                    .output()
+                                    .expect("failed to execute process");
+                                let temp: String =
+                                    String::from_utf8_lossy(&output.stdout).try_into().unwrap();
+                                app.test_stdout = temp;
+                            }
+                            None => {}
+                        };
                     }
                     _ => {}
                 },
@@ -191,6 +201,11 @@ fn draw_filter_input<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     }
 }
 fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
+    let constraints = vec![Constraint::Percentage(50), Constraint::Percentage(50)];
+    let chunks = Layout::default()
+        .constraints(constraints)
+        .direction(Direction::Horizontal)
+        .split(area);
     let messages: Vec<ListItem> = app
         .tests
         .iter()
@@ -205,7 +220,12 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         })
         .collect();
     let messages = List::new(messages).block(Block::default().borders(Borders::ALL).title("Tests"));
-    f.render_widget(messages, area);
+    f.render_widget(messages, chunks[0]);
+
+    let text = Text::from(app.test_stdout.clone());
+    let test_outout =
+        Paragraph::new(text).block(Block::default().borders(Borders::ALL).title("Output"));
+    f.render_widget(test_outout, chunks[1]);
 }
 
 fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
