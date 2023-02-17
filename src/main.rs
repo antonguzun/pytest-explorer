@@ -14,6 +14,8 @@ use tui::{
     Frame, Terminal,
 };
 use unicode_width::UnicodeWidthStr;
+use ansi_to_tui::IntoText;
+
 
 enum InputMode {
     Normal,
@@ -118,6 +120,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             Some(test_name) => {
                                 let output = Command::new("pytest")
                                     .arg(test_name)
+                                    .env("PYTEST_ADDOPTS", "--color=yes")
                                     .output()
                                     .expect("failed to execute process");
                                 let temp: String =
@@ -222,7 +225,9 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let messages = List::new(messages).block(Block::default().borders(Borders::ALL).title("Tests"));
     f.render_widget(messages, chunks[0]);
 
-    let text = Text::from(app.test_stdout.clone());
+    // let text = Text::from(app.test_stdout.clone());
+
+    let text = app.test_stdout.clone().into_text().unwrap();
     let test_outout =
         Paragraph::new(text).block(Block::default().borders(Borders::ALL).title("Output"));
     f.render_widget(test_outout, chunks[1]);
