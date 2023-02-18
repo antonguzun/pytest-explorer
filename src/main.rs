@@ -1,3 +1,4 @@
+use ansi_to_tui::IntoText;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -14,8 +15,6 @@ use tui::{
     Frame, Terminal,
 };
 use unicode_width::UnicodeWidthStr;
-use ansi_to_tui::IntoText;
-
 
 enum InputMode {
     Normal,
@@ -120,6 +119,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             Some(test_name) => {
                                 let output = Command::new("pytest")
                                     .arg(test_name)
+                                    .arg("-vvv")
+                                    .arg("-p").arg("no:warnings")
                                     .env("PYTEST_ADDOPTS", "--color=yes")
                                     .output()
                                     .expect("failed to execute process");
@@ -133,16 +134,13 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     _ => {}
                 },
                 InputMode::Editing => match key.code {
-                    KeyCode::Enter => {
-                        app.messages.push(app.input.drain(..).collect());
-                    }
                     KeyCode::Char(c) => {
                         app.input.push(c);
                     }
                     KeyCode::Backspace => {
                         app.input.pop();
                     }
-                    KeyCode::Esc => {
+                    KeyCode::Esc | KeyCode::Enter | KeyCode::Up | KeyCode::Down => {
                         app.input_mode = InputMode::Normal;
                     }
                     _ => {}
@@ -209,10 +207,16 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .constraints(constraints)
         .direction(Direction::Horizontal)
         .split(area);
+    let start_task_list = app.test_cursor.saturating_sub(area.height as usize / 2);
+    // println!("P{}", start_task_list);
+    let filter: String = app.input.clone();
     let messages: Vec<ListItem> = app
+        // .tests[start_task_list:start_task_list + area.height]
         .tests
         .iter()
+        .filter(|m| m.contains(&filter))
         .enumerate()
+        .filter(|(i, _)| i >= &start_task_list && i < &(start_task_list + area.height as usize))
         .map(|(i, m)| {
             let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
             if i == app.test_cursor.try_into().unwrap() {
@@ -223,6 +227,7 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         })
         .collect();
     let messages = List::new(messages).block(Block::default().borders(Borders::ALL).title("Tests"));
+    // println!("{}", area.height);
     f.render_widget(messages, chunks[0]);
 
     // let text = Text::from(app.test_stdout.clone());
