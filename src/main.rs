@@ -115,12 +115,25 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         }
                     }
                     KeyCode::Enter => {
-                        match app.tests.get(app.test_cursor) {
+                        let filters: Vec<String> = app
+                            .input
+                            .clone()
+                            .split(" ")
+                            .map(|s| String::from(s))
+                            .collect();
+                        match app
+                            .tests
+                            .iter()
+                            .filter(|m| filters.clone().into_iter().all(|f| m.contains(&f)) )
+                            .collect::<Vec<&String>>()
+                            .get(app.test_cursor)
+                        {
                             Some(test_name) => {
                                 let output = Command::new("pytest")
                                     .arg(test_name)
                                     .arg("-vvv")
-                                    .arg("-p").arg("no:warnings")
+                                    .arg("-p")
+                                    .arg("no:warnings")
                                     .env("PYTEST_ADDOPTS", "--color=yes")
                                     .output()
                                     .expect("failed to execute process");
@@ -209,12 +222,17 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .split(area);
     let start_task_list = app.test_cursor.saturating_sub(area.height as usize / 2);
     // println!("P{}", start_task_list);
-    let filter: String = app.input.clone();
+    let filters: Vec<String> = app
+        .input
+        .clone()
+        .split(" ")
+        .map(|s| String::from(s))
+        .collect();
     let messages: Vec<ListItem> = app
         // .tests[start_task_list:start_task_list + area.height]
         .tests
         .iter()
-        .filter(|m| m.contains(&filter))
+        .filter(|m| filters.clone().into_iter().all(|f| m.contains(&f)))
         .enumerate()
         .filter(|(i, _)| i >= &start_task_list && i < &(start_task_list + area.height as usize))
         .map(|(i, m)| {
