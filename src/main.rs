@@ -17,18 +17,14 @@ use tui::{
 use unicode_width::UnicodeWidthStr;
 
 enum InputMode {
-    Normal,
-    Editing,
+    TestScrolling,
+    OutputScrolling,
+    FilterEditing,
 }
 
-/// App holds the state of the application
 struct App {
-    /// Current value of the input box
     input: String,
-    /// Current input mode
     input_mode: InputMode,
-    /// History of recorded messages
-    messages: Vec<String>,
     test_stdout: String,
     tests: Vec<String>,
     test_cursor: usize,
@@ -38,8 +34,7 @@ impl App {
     fn new(tests: Vec<String>) -> App {
         App {
             input: String::new(),
-            input_mode: InputMode::Normal,
-            messages: Vec::new(),
+            input_mode: InputMode::TestScrolling,
             test_stdout: String::new(),
             tests,
             test_cursor: 0,
@@ -96,9 +91,12 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
 
         if let Event::Key(key) = event::read()? {
             match app.input_mode {
-                InputMode::Normal => match key.code {
+                InputMode::TestScrolling => match key.code {
+                    KeyCode::Char('2') => {
+                        app.input_mode = InputMode::OutputScrolling;
+                    }
                     KeyCode::Char('f') => {
-                        app.input_mode = InputMode::Editing;
+                        app.input_mode = InputMode::FilterEditing;
                     }
                     KeyCode::Char('q') => {
                         return Ok(());
@@ -124,7 +122,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         match app
                             .tests
                             .iter()
-                            .filter(|m| filters.clone().into_iter().all(|f| m.contains(&f)) )
+                            .filter(|m| filters.clone().into_iter().all(|f| m.contains(&f)))
                             .collect::<Vec<&String>>()
                             .get(app.test_cursor)
                         {
@@ -146,7 +144,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     }
                     _ => {}
                 },
-                InputMode::Editing => match key.code {
+                InputMode::FilterEditing => match key.code {
                     KeyCode::Char(c) => {
                         app.input.push(c);
                     }
@@ -154,17 +152,29 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         app.input.pop();
                     }
                     KeyCode::Esc | KeyCode::Enter | KeyCode::Up | KeyCode::Down => {
-                        app.input_mode = InputMode::Normal;
+                        app.input_mode = InputMode::TestScrolling;
                     }
                     _ => {}
                 },
+                InputMode::OutputScrolling => match key.code {
+                    KeyCode::Char('1') => {
+                        app.input_mode = InputMode::TestScrolling;
+                    }
+                    KeyCode::Char('f') => {
+                        app.input_mode = InputMode::FilterEditing;
+                    }
+                    KeyCode::Char('q') => {
+                        return Ok(());
+                    }
+                    _ => {}
+                }
             }
         }
     }
 }
 fn draw_help<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let (msg, style) = match app.input_mode {
-        InputMode::Normal => (
+        InputMode::TestScrolling  | InputMode::OutputScrolling => (
             vec![
                 Span::raw("Press "),
                 Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
@@ -174,7 +184,7 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
             ],
             Style::default(),
         ),
-        InputMode::Editing => (
+        InputMode::FilterEditing => (
             vec![
                 Span::raw("Press "),
                 Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)),
@@ -193,17 +203,13 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
 fn draw_filter_input<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let input = Paragraph::new(app.input.as_ref())
         .style(match app.input_mode {
-            InputMode::Normal => Style::default(),
-            InputMode::Editing => Style::default().fg(Color::Yellow),
+            InputMode::FilterEditing => Style::default().fg(Color::Yellow),
+            _ => Style::default(),
         })
         .block(Block::default().borders(Borders::ALL).title("Filter"));
     f.render_widget(input, area);
     match app.input_mode {
-        InputMode::Normal =>
-            // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
-            {}
-
-        InputMode::Editing => {
+        InputMode::FilterEditing => {
             // Make the cursor visible and ask tui-rs to put it at the specified coordinates after rendering
             f.set_cursor(
                 // Put cursor past the end of the input text
@@ -212,6 +218,9 @@ fn draw_filter_input<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
                 area.y + 1,
             )
         }
+        _ =>
+            // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
+            {}
     }
 }
 fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
@@ -244,15 +253,23 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
             }
         })
         .collect();
-    let messages = List::new(messages).block(Block::default().borders(Borders::ALL).title("Tests"));
+    let test_style = match app.input_mode {
+        InputMode::TestScrolling => Style::default().fg(Color::Yellow),
+        _ => Style::default(),
+    };
+    let messages = List::new(messages).block(Block::default().borders(Borders::ALL).border_style(test_style).title("Tests"));
     // println!("{}", area.height);
     f.render_widget(messages, chunks[0]);
 
     // let text = Text::from(app.test_stdout.clone());
 
     let text = app.test_stdout.clone().into_text().unwrap();
+    let test_style = match app.input_mode {
+        InputMode::OutputScrolling => Style::default().fg(Color::Yellow),
+        _ => Style::default(),
+    };
     let test_outout =
-        Paragraph::new(text).block(Block::default().borders(Borders::ALL).title("Output"));
+        Paragraph::new(text).block(Block::default().borders(Borders::ALL).border_style(test_style).title("Output"));
     f.render_widget(test_outout, chunks[1]);
 }
 
