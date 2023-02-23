@@ -26,8 +26,10 @@ struct App {
     input: String,
     input_mode: InputMode,
     test_stdout: String,
+    stdout_cursor: usize,
     tests: Vec<String>,
     test_cursor: usize,
+    debug_info: String,
 }
 
 impl App {
@@ -36,8 +38,10 @@ impl App {
             input: String::new(),
             input_mode: InputMode::TestScrolling,
             test_stdout: String::new(),
+            stdout_cursor: 0,
             tests,
             test_cursor: 0,
+            debug_info: String::new(),
         }
     }
 }
@@ -52,7 +56,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let output = Command::new("pytest")
         .arg("--collect-only")
-        .arg("-q")
+        .arg("-qq")
         .arg("-p")
         .arg("no:warnings")
         .output()
@@ -128,7 +132,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         {
                             Some(test_name) => {
                                 let output = Command::new("pytest")
-                                    .arg(test_name)
+                                    .arg(test_name.split(":").next().unwrap_or(test_name))
                                     .arg("-vvv")
                                     .arg("-p")
                                     .arg("no:warnings")
@@ -158,6 +162,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                 },
                 InputMode::OutputScrolling => match key.code {
                     KeyCode::Char('1') => {
+                        app.stdout_cursor = 0;
                         app.input_mode = InputMode::TestScrolling;
                     }
                     KeyCode::Char('f') => {
@@ -166,21 +171,28 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     KeyCode::Char('q') => {
                         return Ok(());
                     }
+                    KeyCode::Up => {
+                        app.stdout_cursor = app.stdout_cursor.saturating_sub(5);
+                    }
+                    KeyCode::Down => {
+                        app.stdout_cursor = app.stdout_cursor.saturating_add(5);
+                    }
                     _ => {}
-                }
+                },
             }
         }
     }
 }
 fn draw_help<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let (msg, style) = match app.input_mode {
-        InputMode::TestScrolling  | InputMode::OutputScrolling => (
+        InputMode::TestScrolling | InputMode::OutputScrolling => (
             vec![
                 Span::raw("Press "),
                 Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to exit, "),
                 Span::styled("f", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to filter."),
+                Span::raw(app.debug_info.clone()),
             ],
             Style::default(),
         ),
@@ -191,6 +203,7 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
                 Span::raw(" to stop editing, "),
                 Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to record the message"),
+                Span::raw(app.debug_info.clone()),
             ],
             Style::default(),
         ),
@@ -209,18 +222,8 @@ fn draw_filter_input<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .block(Block::default().borders(Borders::ALL).title("Filter"));
     f.render_widget(input, area);
     match app.input_mode {
-        InputMode::FilterEditing => {
-            // Make the cursor visible and ask tui-rs to put it at the specified coordinates after rendering
-            f.set_cursor(
-                // Put cursor past the end of the input text
-                area.x + app.input.width() as u16 + 1,
-                // Move one line down, from the border to the input line
-                area.y + 1,
-            )
-        }
-        _ =>
-            // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
-            {}
+        InputMode::FilterEditing => f.set_cursor(area.x + app.input.width() as u16 + 1, area.y + 1),
+        _ => {}
     }
 }
 fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
@@ -230,7 +233,6 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .direction(Direction::Horizontal)
         .split(area);
     let start_task_list = app.test_cursor.saturating_sub(area.height as usize / 2);
-    // println!("P{}", start_task_list);
     let filters: Vec<String> = app
         .input
         .clone()
@@ -238,7 +240,6 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .map(|s| String::from(s))
         .collect();
     let messages: Vec<ListItem> = app
-        // .tests[start_task_list:start_task_list + area.height]
         .tests
         .iter()
         .filter(|m| filters.clone().into_iter().all(|f| m.contains(&f)))
@@ -257,20 +258,39 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         InputMode::TestScrolling => Style::default().fg(Color::Yellow),
         _ => Style::default(),
     };
-    let messages = List::new(messages).block(Block::default().borders(Borders::ALL).border_style(test_style).title("Tests"));
-    // println!("{}", area.height);
+    let messages = List::new(messages).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(test_style)
+            .title("Tests"),
+    );
     f.render_widget(messages, chunks[0]);
 
-    // let text = Text::from(app.test_stdout.clone());
-
     let text = app.test_stdout.clone().into_text().unwrap();
+    let start_stdout_list = min(app.stdout_cursor, text.lines.len());
+    let stop_stdout_list = min(start_stdout_list + area.height as usize, text.lines.len());
+    let debug_info = format!(
+        "{} .. {}, total {}, output cursor {}",
+        start_stdout_list,
+        stop_stdout_list,
+        text.lines.len(),
+        app.stdout_cursor
+    );
+    let text_to_show = text.lines[start_stdout_list..stop_stdout_list].to_vec();
     let test_style = match app.input_mode {
         InputMode::OutputScrolling => Style::default().fg(Color::Yellow),
         _ => Style::default(),
     };
-    let test_outout =
-        Paragraph::new(text).block(Block::default().borders(Borders::ALL).border_style(test_style).title("Output"));
+    let test_outout = Paragraph::new(text_to_show).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(test_style)
+            .title("Output"),
+    );
     f.render_widget(test_outout, chunks[1]);
+
+    let debug_message = Paragraph::new(Text::from(Span::from(debug_info)));
+    f.render_widget(debug_message, area);
 }
 
 fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
