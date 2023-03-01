@@ -4,8 +4,10 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use pytexp::collect_test;
+use pytexp::logs::emit_error;
 use std::{cmp::min, process::Command};
-use std::{error::Error, io};
+use std::{error::Error, io, io::Write};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
@@ -27,13 +29,13 @@ struct App {
     input_mode: InputMode,
     test_stdout: String,
     stdout_cursor: usize,
-    tests: Vec<String>,
+    tests: collect_test::PytestTree,
     test_cursor: usize,
     debug_info: String,
 }
 
 impl App {
-    fn new(tests: Vec<String>) -> App {
+    fn new(tests: collect_test::PytestTree) -> App {
         App {
             input: String::new(),
             input_mode: InputMode::TestScrolling,
@@ -45,7 +47,12 @@ impl App {
         }
     }
 }
+// trait UiDisplay {
+//     fn is_test_contains_value(self, value: &str) -> bool;
+// }
+// impl UiDisplay for collect_test::PytestTree{
 
+// }
 fn main() -> Result<(), Box<dyn Error>> {
     // setup terminal
     enable_raw_mode()?;
@@ -53,23 +60,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
-    let output = Command::new("pytest")
-        .arg("--collect-only")
-        .arg("-qq")
-        .arg("-p")
-        .arg("no:warnings")
-        .output()
-        .expect("failed to execute process");
-    let temp: String = String::from_utf8_lossy(&output.stdout).try_into().unwrap();
-    let mut tests: Vec<String> = temp
-        .split("\n")
-        .map(|v| String::from(v))
-        .filter(|v| v.contains("test"))
-        .collect();
-    tests.pop();
+    let output = collect_test::fetch_pytest_collected_stdout()?;
+    emit_error("output:\n");
+    emit_error(&format!("{}\n", &output.clone()));
+    let pytest_tree = collect_test::collect(output)?;
     // create app and run it
-    let app = App::new(tests);
+    emit_error(&format!("tests load {}\n", pytest_tree.elements.len()));
+    let app = App::new(pytest_tree);
 
     let res = run_app(&mut terminal, app);
 
@@ -112,7 +109,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         }
                     }
                     KeyCode::Down => {
-                        if app.test_cursor < min(usize::MAX, app.tests.len()) - 1 {
+                        if app.test_cursor
+                            < min(usize::MAX, app.tests.elements.len()).saturating_sub(1)
+                        {
                             app.test_cursor = app.test_cursor + 1;
                         }
                     }
@@ -125,14 +124,21 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             .collect();
                         match app
                             .tests
+                            .elements
                             .iter()
-                            .filter(|m| filters.clone().into_iter().all(|f| m.contains(&f)))
-                            .collect::<Vec<&String>>()
+                            .filter(|m| {
+                                filters
+                                    .clone()
+                                    .into_iter()
+                                    .all(|f| app.tests.is_test_contains_value(m.clone().clone(), &f))
+                            })
+                            .map(|t| app.tests.full_test_name(t.clone()))
+                            .collect::<Vec<String>>()
                             .get(app.test_cursor)
                         {
                             Some(test_name) => {
                                 let output = Command::new("pytest")
-                                    .arg(test_name.split(":").next().unwrap_or(test_name))
+                                    .arg(test_name)
                                     .arg("-vvv")
                                     .arg("-p")
                                     .arg("no:warnings")
@@ -241,12 +247,22 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .collect();
     let messages: Vec<ListItem> = app
         .tests
+        .elements
         .iter()
-        .filter(|m| filters.clone().into_iter().all(|f| m.contains(&f)))
+        .filter(|m| {
+            filters
+                .clone()
+                .into_iter()
+                .all(|f| app.tests.is_test_contains_value(m.clone().clone(), &f))
+        })
         .enumerate()
         .filter(|(i, _)| i >= &start_task_list && i < &(start_task_list + area.height as usize))
-        .map(|(i, m)| {
-            let content = vec![Spans::from(Span::raw(format!("{}: {}", i, m)))];
+        .map(|(i, t)| {
+            let content = vec![Spans::from(Span::raw(format!(
+                "{}: {}",
+                i,
+                app.tests.full_test_name(t.clone())
+            )))];
             if i == app.test_cursor.try_into().unwrap() {
                 ListItem::new(content).style(Style::default().bg(Color::Yellow))
             } else {
@@ -270,12 +286,14 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let start_stdout_list = min(app.stdout_cursor, text.lines.len());
     let stop_stdout_list = min(start_stdout_list + area.height as usize, text.lines.len());
     let debug_info = format!(
-        "{} .. {}, total {}, output cursor {}",
+        "{} .. {}, total {}, output cursor {}, tests_count {} \n",
         start_stdout_list,
         stop_stdout_list,
         text.lines.len(),
-        app.stdout_cursor
+        app.stdout_cursor,
+        app.tests.elements.len(),
     );
+    emit_error(&debug_info);
     let text_to_show = text.lines[start_stdout_list..stop_stdout_list].to_vec();
     let test_style = match app.input_mode {
         InputMode::OutputScrolling => Style::default().fg(Color::Yellow),
