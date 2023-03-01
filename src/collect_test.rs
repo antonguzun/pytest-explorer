@@ -1,8 +1,6 @@
 use regex::Regex;
 use std::process::Command;
-
-use crate::logs::emit_error;
-// use std::rc::Rc;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 enum PytestElementType {
@@ -13,63 +11,54 @@ enum PytestElementType {
 
 #[derive(Debug, Clone)]
 pub struct PytestElement {
-    id: usize,
+    pub id: usize,
     pub name: String,
-    parent_id: usize,
+    parent: Option<Rc<PytestElement>>,
     element_type: PytestElementType,
 }
 
 #[derive(Debug, Clone)]
 pub struct PytestTree {
     id: usize,
-    pub elements: Vec<PytestElement>,
+    pub elements: Vec<Rc<PytestElement>>,
 }
 
-impl PytestTree {
-    pub fn new(id: usize, elements: Vec<PytestElement>) -> Self {
-        Self { id, elements }
-    }
-    fn element_by_parent_id(&self, parent_id: usize) -> PytestElement {
-        match self.elements.iter().find(|e| e.id == parent_id) {
-            Some(p) => p.clone(),
-            None => {
-                emit_error(&format!("element_by_parent_id {}", parent_id));
-                panic!()
-            }
-        }
-    }
-    pub fn is_test_contains_value(&self, test: PytestElement, value: &str) -> bool {
-        let mut targets = vec![test.name];
-        if test.parent_id != 0 {
-            let parent = self.element_by_parent_id(test.parent_id);
-            match parent.element_type {
-                PytestElementType::Module => targets.push(parent.name),
-                PytestElementType::Class => {
-                    let element = self.element_by_parent_id(parent.parent_id);
-                    targets.push(element.name.clone())
-                }
-                PytestElementType::Function => panic!("Function type cannot be parent"),
-            };
-        }
-        targets.iter().any(|t| t.contains(value))
-    }
-    pub fn full_test_name(&self, test: PytestElement) -> String {
-        match test.element_type {
-            PytestElementType::Module => return test.name.clone(),
+impl PytestElement {
+    pub fn full_test_name(&self) -> String {
+        match self.element_type {
+            PytestElementType::Module => return self.name.clone(),
             PytestElementType::Class => {
-                let module_name = self.element_by_parent_id(test.parent_id).name;
-                return format!("{}::{}", module_name, test.name);
+                return format!("{}::{}", self.parent.clone().unwrap().name, self.name);
             }
             PytestElementType::Function => {
-                let parent = self.element_by_parent_id(test.parent_id);
-                if parent.parent_id == 0 {
-                    return format!("{}::{}", parent.name, test.name);
-                } else {
-                    let top_parent = self.element_by_parent_id(parent.parent_id);
-                    return format!("{}::{}::{}", top_parent.name, parent.name, test.name);
+                let parent = self.parent.clone().unwrap();
+                match &parent.parent {
+                    Some(module) => format!("{}::{}::{}", module.name, parent.name, self.name),
+                    None => format!("{}::{}", parent.name, self.name),
                 }
             }
         }
+    }
+    pub fn is_test_contains_value(&self, value: &str) -> bool {
+        let mut targets = vec![&self.name];
+        match &self.parent {
+            Some(p) => {
+                targets.push(&p.name);
+                match &p.parent {
+                    Some(pp) => {
+                        targets.push(&pp.name);
+                    }
+                    None => {}
+                }
+            }
+            None => {}
+        };
+        targets.iter().any(|t| t.contains(value))
+    }
+}
+impl PytestTree {
+    pub fn new(id: usize, elements: Vec<Rc<PytestElement>>) -> Self {
+        Self { id, elements }
     }
 }
 
@@ -99,11 +88,11 @@ pub fn fetch_pytest_collected_stdout() -> Result<String, String> {
 }
 pub fn collect(input: String) -> Result<PytestTree, String> {
     let mut counter = Counter::new();
-    let mut elements: Vec<PytestElement> = vec![];
+    let mut elements = vec![];
     let tree_id = counter.get();
     let re = Regex::new(r"^(\s*)<(Function|Class|Module)\s(.*)>$").unwrap();
-    let mut last_module_id: Option<usize> = None;
-    let mut last_class_in_module_id: Option<usize> = None;
+    let mut last_module: Option<Rc<PytestElement>> = None;
+    let mut last_class_in_module: Option<Rc<PytestElement>> = None;
     for line in input.split("\n") {
         match re.captures(line) {
             Some(caps) => {
@@ -111,37 +100,48 @@ pub fn collect(input: String) -> Result<PytestTree, String> {
                 let name = caps.get(3).unwrap().as_str().to_string();
                 match caps.get(2).unwrap().as_str() {
                     "Function" => {
+                        let parent = match &last_class_in_module {
+                            Some(p_c) => Some(Rc::clone(p_c)),
+                            None => match &last_module {
+                                Some(p_m) => Some(Rc::clone(p_m)),
+                                None => panic!("Wrong test input, Function have to own parent"),
+                            },
+                        };
                         let e = PytestElement {
                             id: counter.get(),
                             name,
-                            parent_id: match last_class_in_module_id {
-                                Some(p) => p,
-                                None => last_module_id.unwrap(),
-                            },
+                            parent,
                             element_type: PytestElementType::Function,
                         };
-                        elements.push(e);
+                        let element = Rc::new(e);
+                        elements.push(element);
                     }
                     "Class" => {
+                        let parent = match &last_module {
+                            Some(p) => Some(Rc::clone(p)),
+                            None => None,
+                        };
                         let e = PytestElement {
                             id: counter.get(),
                             name,
-                            parent_id: last_module_id.unwrap(),
+                            parent,
                             element_type: PytestElementType::Class,
                         };
-                        last_class_in_module_id = Some(e.id);
-                        elements.push(e);
+                        let element = Rc::new(e);
+                        last_class_in_module = Some(Rc::clone(&element));
+                        elements.push(element);
                     }
                     "Module" => {
                         let e = PytestElement {
                             id: counter.get(),
                             name,
-                            parent_id: tree_id,
+                            parent: None,
                             element_type: PytestElementType::Module,
                         };
-                        last_module_id = Some(e.id);
-                        last_class_in_module_id = None;
-                        elements.push(e);
+                        let element = Rc::new(e);
+                        last_module = Some(Rc::clone(&element));
+                        last_class_in_module = None;
+                        elements.push(element);
                     }
                     _ => {}
                 };
@@ -204,28 +204,13 @@ mod tests {
         let target_test = tree.elements.get(4).unwrap();
         assert_eq!(&target_test.name, "test_pause_reading_stub_transport");
         assert_eq!(target_test.id, 5);
-        assert_eq!(target_test.parent_id, 5);
+        assert_eq!(target_test.parent.clone().unwrap().id, 1);
 
-        assert_eq!(
-            tree.is_test_contains_value(target_test.clone(), "stub"),
-            true
-        );
-        assert_eq!(
-            tree.is_test_contains_value(target_test.clone(), "base_protocol"),
-            true
-        );
-        assert_eq!(
-            tree.is_test_contains_value(target_test.clone(), ".py"),
-            true
-        );
+        assert_eq!(target_test.is_test_contains_value("stub"), true);
+        assert_eq!(target_test.is_test_contains_value("base_protocol"), true);
+        assert_eq!(target_test.is_test_contains_value(".py"), true);
 
-        assert_eq!(
-            tree.is_test_contains_value(target_test.clone(), "Function"),
-            false
-        );
-        assert_eq!(
-            tree.is_test_contains_value(target_test.clone(), ".rs"),
-            false
-        );
+        assert_eq!(target_test.is_test_contains_value("Function"), false);
+        assert_eq!(target_test.is_test_contains_value(".rs"), false);
     }
 }

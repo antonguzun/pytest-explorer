@@ -7,7 +7,7 @@ use crossterm::{
 use pytexp::collect_test;
 use pytexp::logs::emit_error;
 use std::{cmp::min, process::Command};
-use std::{error::Error, io, io::Write};
+use std::{error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
@@ -31,7 +31,6 @@ struct App {
     stdout_cursor: usize,
     tests: collect_test::PytestTree,
     test_cursor: usize,
-    debug_info: String,
 }
 
 impl App {
@@ -43,7 +42,6 @@ impl App {
             stdout_cursor: 0,
             tests,
             test_cursor: 0,
-            debug_info: String::new(),
         }
     }
 }
@@ -126,13 +124,13 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             .tests
                             .elements
                             .iter()
-                            .filter(|m| {
+                            .filter(|t| {
                                 filters
                                     .clone()
                                     .into_iter()
-                                    .all(|f| app.tests.is_test_contains_value(m.clone().clone(), &f))
+                                    .any(|f| t.is_test_contains_value(&f))
                             })
-                            .map(|t| app.tests.full_test_name(t.clone()))
+                            .map(|t| t.full_test_name())
                             .collect::<Vec<String>>()
                             .get(app.test_cursor)
                         {
@@ -198,7 +196,6 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
                 Span::raw(" to exit, "),
                 Span::styled("f", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to filter."),
-                Span::raw(app.debug_info.clone()),
             ],
             Style::default(),
         ),
@@ -209,7 +206,6 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
                 Span::raw(" to stop editing, "),
                 Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to record the message"),
-                Span::raw(app.debug_info.clone()),
             ],
             Style::default(),
         ),
@@ -249,19 +245,19 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .tests
         .elements
         .iter()
-        .filter(|m| {
+        .filter(|t| {
             filters
                 .clone()
                 .into_iter()
-                .all(|f| app.tests.is_test_contains_value(m.clone().clone(), &f))
+                .any(|f| t.is_test_contains_value(&f))
         })
         .enumerate()
         .filter(|(i, _)| i >= &start_task_list && i < &(start_task_list + area.height as usize))
         .map(|(i, t)| {
             let content = vec![Spans::from(Span::raw(format!(
                 "{}: {}",
-                i,
-                app.tests.full_test_name(t.clone())
+                t.id,
+                t.full_test_name()
             )))];
             if i == app.test_cursor.try_into().unwrap() {
                 ListItem::new(content).style(Style::default().bg(Color::Yellow))
@@ -306,9 +302,6 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
             .title("Output"),
     );
     f.render_widget(test_outout, chunks[1]);
-
-    let debug_message = Paragraph::new(Text::from(Span::from(debug_info)));
-    f.render_widget(debug_message, area);
 }
 
 fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
