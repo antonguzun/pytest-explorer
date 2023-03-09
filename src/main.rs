@@ -4,7 +4,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use pytexp::collect_test;
+use pytexp::parser;
 use pytexp::logs::emit_error;
 use std::{cmp::min, process::Command};
 use std::{error::Error, io};
@@ -29,12 +29,12 @@ struct App {
     input_mode: InputMode,
     test_stdout: String,
     stdout_cursor: usize,
-    tests: collect_test::PytestTree,
+    tests: Vec<String>,
     test_cursor: usize,
 }
 
 impl App {
-    fn new(tests: collect_test::PytestTree) -> App {
+    fn new(tests:  Vec<String>)-> App {
         App {
             input: String::new(),
             input_mode: InputMode::TestScrolling,
@@ -45,12 +45,7 @@ impl App {
         }
     }
 }
-// trait UiDisplay {
-//     fn is_test_contains_value(self, value: &str) -> bool;
-// }
-// impl UiDisplay for collect_test::PytestTree{
 
-// }
 fn main() -> Result<(), Box<dyn Error>> {
     // setup terminal
     enable_raw_mode()?;
@@ -58,12 +53,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let output = collect_test::fetch_pytest_collected_stdout()?;
-    emit_error("output:\n");
-    emit_error(&format!("{}\n", &output.clone()));
-    let pytest_tree = collect_test::collect(output)?;
+    let pytest_tree = parser::run()?;
     // create app and run it
-    emit_error(&format!("tests load {}\n", pytest_tree.elements.len()));
+    emit_error(&format!("tests load {}\n", pytest_tree.len()));
     let app = App::new(pytest_tree);
 
     let res = run_app(&mut terminal, app);
@@ -108,7 +100,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     }
                     KeyCode::Down => {
                         if app.test_cursor
-                            < min(usize::MAX, app.tests.elements.len()).saturating_sub(1)
+                            < min(usize::MAX, app.tests.len()).saturating_sub(1)
                         {
                             app.test_cursor = app.test_cursor + 1;
                         }
@@ -116,21 +108,21 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     KeyCode::Enter => {
                         let filters: Vec<String> = app
                             .input
+                            .trim()
                             .clone()
                             .split(" ")
                             .map(|s| String::from(s))
                             .collect();
                         match app
                             .tests
-                            .elements
                             .iter()
                             .filter(|t| {
                                 filters
                                     .clone()
                                     .into_iter()
-                                    .any(|f| t.is_test_contains_value(&f))
+                                    .any(|f| t.contains(&f))
                             })
-                            .map(|t| t.full_test_name())
+                            .map(|t| t.clone())
                             .collect::<Vec<String>>()
                             .get(app.test_cursor)
                         {
@@ -243,21 +235,19 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .collect();
     let messages: Vec<ListItem> = app
         .tests
-        .elements
         .iter()
         .filter(|t| {
             filters
                 .clone()
                 .into_iter()
-                .any(|f| t.is_test_contains_value(&f))
+                .any(|f| t.contains(&f))
         })
         .enumerate()
         .filter(|(i, _)| i >= &start_task_list && i < &(start_task_list + area.height as usize))
         .map(|(i, t)| {
             let content = vec![Spans::from(Span::raw(format!(
-                "{}: {}",
-                t.id,
-                t.full_test_name()
+                "{}",
+                t
             )))];
             if i == app.test_cursor.try_into().unwrap() {
                 ListItem::new(content).style(Style::default().bg(Color::Yellow))
@@ -281,15 +271,6 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let text = app.test_stdout.clone().into_text().unwrap();
     let start_stdout_list = min(app.stdout_cursor, text.lines.len());
     let stop_stdout_list = min(start_stdout_list + area.height as usize, text.lines.len());
-    let debug_info = format!(
-        "{} .. {}, total {}, output cursor {}, tests_count {} \n",
-        start_stdout_list,
-        stop_stdout_list,
-        text.lines.len(),
-        app.stdout_cursor,
-        app.tests.elements.len(),
-    );
-    emit_error(&debug_info);
     let text_to_show = text.lines[start_stdout_list..stop_stdout_list].to_vec();
     let test_style = match app.input_mode {
         InputMode::OutputScrolling => Style::default().fg(Color::Yellow),
