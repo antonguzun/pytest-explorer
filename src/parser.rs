@@ -1,4 +1,4 @@
-use anyhow::{Result};
+use anyhow::Result;
 use rustpython_parser::ast;
 use rustpython_parser::parse_program;
 use walkdir::WalkDir;
@@ -20,17 +20,24 @@ pub fn parse_file(contents: &str) -> Result<Vec<String>> {
                     body,
                     ..
                 } => {
-                    k.push(class_name.clone());
-                    for m in body {
-                        match m {
-                            ast::Located { node: m_node, .. } => match m_node {
-                                ast::StmtKind::FunctionDef { name, .. } => {
-                                    if name.starts_with("test_") {
-                                        k.push(format!("{}::{}", &class_name, name));
+                    if class_name.starts_with("Test") {
+                        let mut tests_in_class = vec![];
+                        for m in body {
+                            match m {
+                                ast::Located { node: m_node, .. } => match m_node {
+                                    ast::StmtKind::FunctionDef { name, .. } => {
+                                        if name.starts_with("test_") {
+                                            tests_in_class
+                                                .push(format!("{}::{}", &class_name, name));
+                                        }
                                     }
-                                }
-                                _ => {}
-                            },
+                                    _ => {}
+                                },
+                            }
+                        }
+                        if tests_in_class.len() > 0 {
+                            k.push(class_name.clone());
+                            k.extend(tests_in_class);
                         }
                     }
                 }
