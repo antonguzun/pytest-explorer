@@ -92,8 +92,9 @@ fn update_filtered_test_count(app: &mut App) {
     app.filtered_tests_count = app
         .tests
         .iter()
-        .filter(|t| filters.clone().into_iter().any(|f| t.contains(&f)))
+        .filter(|t| filters.clone().into_iter().all(|f| t.contains(&f)))
         .count();
+    app.test_cursor = min(app.test_cursor, app.filtered_tests_count - 1);
 }
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
     loop {
@@ -148,7 +149,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         match app
                             .tests
                             .iter()
-                            .filter(|t| filters.clone().into_iter().any(|f| t.contains(&f)))
+                            .filter(|t| filters.clone().into_iter().all(|f| t.contains(&f)))
                             .cloned()
                             .collect::<Vec<String>>()
                             .get(app.test_cursor)
@@ -273,7 +274,7 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let messages: Vec<ListItem> = app
         .tests
         .iter()
-        .filter(|t| filters.clone().into_iter().any(|f| t.contains(&f)))
+        .filter(|t| filters.clone().into_iter().all(|f| t.contains(&f)))
         .enumerate()
         .filter(|(i, _)| i >= &start_task_list && i < &(start_task_list + area.height as usize))
         .map(|(i, t)| {
