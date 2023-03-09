@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result};
 use rustpython_parser::ast;
 use rustpython_parser::parse_program;
 use walkdir::WalkDir;

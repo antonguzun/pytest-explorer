@@ -70,7 +70,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     terminal.show_cursor()?;
 
     if let Err(err) = res {
-        println!("{:?}", err)
+        println!("{err:?}")
     }
 
     Ok(())
@@ -95,14 +95,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
 
                     KeyCode::Up => {
                         if app.test_cursor > 0 {
-                            app.test_cursor = app.test_cursor - 1;
+                            app.test_cursor -= 1;
                         }
                     }
                     KeyCode::Down => {
                         if app.test_cursor
                             < min(usize::MAX, app.tests.len()).saturating_sub(1)
                         {
-                            app.test_cursor = app.test_cursor + 1;
+                            app.test_cursor += 1;
                         }
                     }
                     KeyCode::Enter => {
@@ -110,8 +110,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             .input
                             .trim()
                             .clone()
-                            .split(" ")
-                            .map(|s| String::from(s))
+                            .split(' ')
+                            .map(String::from)
                             .collect();
                         match app
                             .tests
@@ -121,8 +121,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                                     .clone()
                                     .into_iter()
                                     .any(|f| t.contains(&f))
-                            })
-                            .map(|t| t.clone())
+                            }).cloned()
                             .collect::<Vec<String>>()
                             .get(app.test_cursor)
                         {
@@ -230,8 +229,8 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let filters: Vec<String> = app
         .input
         .clone()
-        .split(" ")
-        .map(|s| String::from(s))
+        .split(' ')
+        .map(String::from)
         .collect();
     let messages: Vec<ListItem> = app
         .tests
@@ -245,10 +244,7 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .enumerate()
         .filter(|(i, _)| i >= &start_task_list && i < &(start_task_list + area.height as usize))
         .map(|(i, t)| {
-            let content = vec![Spans::from(Span::raw(format!(
-                "{}",
-                t
-            )))];
+            let content = vec![Spans::from(Span::raw(t.to_string()))];
             if i == app.test_cursor.try_into().unwrap() {
                 ListItem::new(content).style(Style::default().bg(Color::Yellow))
             } else {
