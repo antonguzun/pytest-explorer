@@ -29,3 +29,6 @@ rustpython-parser = { features = [
 ], git = "https://github.com/RustPython/RustPython.git", rev = "1871a1632e310985414211222f5bf8069678892f" }
 serde = { version = "1.0.152", features = ["derive"] }
 serde_json = { version = "1.0.93" }
+[profile.release]
+lto = true
+opt-level = 3

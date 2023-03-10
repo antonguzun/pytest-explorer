@@ -256,7 +256,14 @@ fn draw_filter_input<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
             _ => Style::default(),
         })
         .block(Block::default().borders(Borders::ALL).title("Filter"));
+    let count = Paragraph::new(format!("{}/{}", app.filtered_tests_count, app.tests.len())).alignment(tui::layout::Alignment::Right)
+        .style(match app.input_mode {
+            InputMode::FilterEditing => Style::default().fg(Color::Yellow),
+            _ => Style::default(),
+        })
+        .block(Block::default().borders(Borders::ALL).title("Filter"));
     f.render_widget(input, area);
+    f.render_widget(count, area);
     match app.input_mode {
         InputMode::FilterEditing => f.set_cursor(area.x + app.input.width() as u16 + 1, area.y + 1),
         _ => {}
