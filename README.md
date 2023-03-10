@@ -1,4 +1,7 @@
-![image](https://user-images.githubusercontent.com/23196976/219866003-04e9a353-b104-4b4b-a20f-f85a9c7961c3.png)
+# pytest-explorer
+Fast terminal ui pytest explorer.
+
+![image](https://user-images.githubusercontent.com/23196976/224422665-924eb367-38d4-41e4-8c11-ef1c39a4c73d.png)
 
 # Build from source
 - Install rust (Minimum supported version: 1.67)
