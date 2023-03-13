@@ -5,48 +5,51 @@ use walkdir::WalkDir;
 
 pub fn parse_file(contents: &str) -> Result<Vec<String>> {
     let python_ast = parse_program(contents, "<embedded>")?;
-    let mut k = vec![];
+    let mut tests = vec![];
     for i in python_ast {
-        match i {
-            ast::Located { node, .. } => match node {
-                ast::StmtKind::FunctionDef { name, .. } => {
-                    if name.starts_with("test_") {
-                        k.push(name);
-                    }
-                }
-                ast::StmtKind::ClassDef {
-                    name: class_name,
-                    bases: _, //FIXME! add tests from bases
-                    body,
-                    ..
-                } => {
-                    if class_name.starts_with("Test") {
-                        let mut tests_in_class = vec![];
-                        for m in body {
-                            match m {
-                                ast::Located { node: m_node, .. } => match m_node {
-                                    ast::StmtKind::FunctionDef { name, .. } => {
-                                        if name.starts_with("test_") {
-                                            tests_in_class
-                                                .push(format!("{}::{}", &class_name, name));
-                                        }
-                                    }
-                                    _ => {}
-                                },
-                            }
-                        }
-                        if !tests_in_class.is_empty() {
-                            k.push(class_name.clone());
-                            k.extend(tests_in_class);
-                        }
-                    }
-                }
-                _ => {}
-            },
+        let ast::Located { node, .. } = i;
+        match node {
+            ast::StmtKind::FunctionDef { name, .. } => {
+                add_function(name, &mut tests);
+            }
+            ast::StmtKind::ClassDef {
+                name: class_name,
+                bases: _, //FIXME! add tests from bases
+                body,
+                ..
+            } => {
+                add_class(class_name, body, &mut tests);
+            }
+            _ => {}
         }
     }
-    Ok(k)
+    Ok(tests)
 }
+
+fn add_class(class_name: String, body: Vec<ast::Located<ast::StmtKind>>, input: &mut Vec<String>) {
+    if class_name.starts_with("Test") {
+        let mut tests_in_class = vec![];
+        for m in body {
+            let ast::Located { node: m_node, .. } = m;
+            if let ast::StmtKind::FunctionDef { name, .. } = m_node {
+                if name.starts_with("test_") {
+                    tests_in_class.push(format!("{}::{}", &class_name, name));
+                }
+            }
+        }
+        if !tests_in_class.is_empty() {
+            input.push(class_name);
+            input.extend(tests_in_class);
+        }
+    }
+}
+
+fn add_function(name: String, input: &mut Vec<String>) {
+    if name.starts_with("test_") {
+        input.push(name);
+    }
+}
+
 pub fn run() -> Result<Vec<String>> {
     let mut paths = vec![];
     for entry in WalkDir::new("tests")

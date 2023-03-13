@@ -82,16 +82,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn load_filters_from_app(app: &App) -> Vec<String> {
-    app.input
-        .trim()
-        .clone()
-        .split(' ')
-        .map(String::from)
-        .collect()
+    app.input.trim().split(' ').map(String::from).collect()
 }
 
-fn is_accure_all_filters(filters: &Vec<String>, t: &str) -> bool {
-    filters.clone().into_iter().all(|f| t.contains(&f))
+fn is_accure_all_filters(filters: &[String], t: &str) -> bool {
+    filters.to_owned().iter().cloned().all(|f| t.contains(&f))
 }
 
 fn find_selected_test(app: &App) -> Option<String> {
@@ -101,7 +96,8 @@ fn find_selected_test(app: &App) -> Option<String> {
         .filter(|t| is_accure_all_filters(&filters, t))
         .cloned()
         .collect::<Vec<String>>()
-        .get(app.test_cursor).map(|s| s.to_string())
+        .get(app.test_cursor)
+        .map(|s| s.to_string())
 }
 
 fn update_filtered_test_count(app: &mut App) {
@@ -331,9 +327,8 @@ fn draw_filter_input<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .block(Block::default().borders(Borders::ALL).title("Filter"));
     f.render_widget(input, area);
     f.render_widget(count, area);
-    match app.input_mode {
-        InputMode::FilterEditing => f.set_cursor(area.x + app.input.width() as u16 + 1, area.y + 1),
-        _ => {}
+    if let InputMode::FilterEditing = app.input_mode {
+        f.set_cursor(area.x + app.input.width() as u16 + 1, area.y + 1)
     }
 }
 fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
@@ -348,12 +343,12 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let messages: Vec<ListItem> = app
         .tests
         .iter()
-        .filter(|t| is_accure_all_filters(&filters.clone(), t.clone()))
+        .filter(|t| is_accure_all_filters(&filters.clone(), t))
         .enumerate()
         .filter(|(i, _)| i >= &start_task_list && i < &(start_task_list + area.height as usize))
         .map(|(i, t)| {
             let content = vec![Spans::from(Span::raw(t.to_string()))];
-            if i == app.test_cursor.try_into().unwrap() {
+            if i == app.test_cursor {
                 ListItem::new(content).style(Style::default().bg(Color::Yellow))
             } else {
                 ListItem::new(content)
