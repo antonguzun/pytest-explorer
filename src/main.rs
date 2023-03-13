@@ -70,7 +70,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     KeyCode::Down | KeyCode::Char('j') => {
                         app.test_cursor = min(
                             app.test_cursor.saturating_add(1),
-                            app.filtered_tests_count - 1,
+                            app.filtered_tests_count.saturating_sub(1),
                         );
                     }
                     KeyCode::PageUp => {
@@ -79,14 +79,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     KeyCode::PageDown => {
                         app.test_cursor = min(
                             app.test_cursor.saturating_add(half_of_height),
-                            app.filtered_tests_count - 1,
+                            app.filtered_tests_count.saturating_sub(1),
                         );
                     }
                     KeyCode::Home => {
                         app.test_cursor = 0;
                     }
                     KeyCode::End => {
-                        app.test_cursor = app.filtered_tests_count - 1;
+                        app.test_cursor = app.filtered_tests_count.saturating_sub(1);
                     }
                     KeyCode::Enter => {
                         if let Some(test_name) = app.find_selected_test() {
