@@ -30,7 +30,7 @@ impl App {
             loading_lock: false,
         }
     }
-    pub fn load_filters_from_app(self: &Self) -> Vec<String> {
+    pub fn load_filters_from_app(&self) -> Vec<String> {
         self.input.trim().split(' ').map(String::from).collect()
     }
 
@@ -38,7 +38,7 @@ impl App {
         filters.to_owned().iter().cloned().all(|f| t.contains(&f))
     }
 
-    pub fn find_selected_test(self: &Self) -> Option<String> {
+    pub fn find_selected_test(&self) -> Option<String> {
         let filters = self.load_filters_from_app();
         self.tests
             .iter()
@@ -49,7 +49,7 @@ impl App {
             .map(|s| s.to_string())
     }
 
-    pub fn update_filtered_test_count(self: &mut Self) {
+    pub fn update_filtered_test_count(&mut self) {
         let filters = self.load_filters_from_app();
         self.filtered_tests_count = self
             .tests
