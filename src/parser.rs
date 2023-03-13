@@ -35,7 +35,7 @@ pub fn parse_file(contents: &str) -> Result<Vec<String>> {
                                 },
                             }
                         }
-                        if tests_in_class.len() > 0 {
+                        if !tests_in_class.is_empty() {
                             k.push(class_name.clone());
                             k.extend(tests_in_class);
                         }

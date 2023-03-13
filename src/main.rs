@@ -95,14 +95,13 @@ fn is_accure_all_filters(filters: &Vec<String>, t: &str) -> bool {
 }
 
 fn find_selected_test(app: &App) -> Option<String> {
-    let filters = load_filters_from_app(&*app);
+    let filters = load_filters_from_app(app);
     app.tests
         .iter()
         .filter(|t| is_accure_all_filters(&filters, t))
         .cloned()
         .collect::<Vec<String>>()
-        .get(app.test_cursor)
-        .and_then(|s| Some(s.to_string()))
+        .get(app.test_cursor).map(|s| s.to_string())
 }
 
 fn update_filtered_test_count(app: &mut App) {
@@ -186,7 +185,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             terminal.draw(|f| ui(f, &app))?;
                             let output = run_test(test_name);
 
-                            if output.stdout.len() > 0 {
+                            if !output.stdout.is_empty() {
                                 let temp: String =
                                     String::from_utf8_lossy(&output.stdout).try_into().unwrap();
                                 app.test_stdout = temp;
@@ -202,7 +201,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     KeyCode::Char('r') => {
                         if let Some(test_name) = find_selected_test(&app) {
                             let command =
-                                format!("pytest {} -vvv -p no:warnings; exec zsh", test_name);
+                                format!("pytest {test_name} -vvv -p no:warnings; exec zsh");
                             run_command_in_shell(&command);
                         }
                     }
