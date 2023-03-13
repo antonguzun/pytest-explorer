@@ -6,7 +6,10 @@ use crossterm::{
 };
 use pytexp::logs::emit_error;
 use pytexp::parser;
-use std::{cmp::min, process::Command};
+use std::{
+    cmp::min,
+    process::{Command, Stdio},
+};
 use std::{error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -94,7 +97,7 @@ fn update_filtered_test_count(app: &mut App) {
         .iter()
         .filter(|t| filters.clone().into_iter().all(|f| t.contains(&f)))
         .count();
-    app.test_cursor = min(app.test_cursor, app.filtered_tests_count - 1);
+    app.test_cursor = min(app.test_cursor, app.filtered_tests_count.saturating_sub(1));
 }
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
     loop {
@@ -146,7 +149,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             .split(' ')
                             .map(String::from)
                             .collect();
-                        match app
+                        if let Some(test_name) = app
                             .tests
                             .iter()
                             .filter(|t| filters.clone().into_iter().all(|f| t.contains(&f)))
@@ -154,25 +157,89 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             .collect::<Vec<String>>()
                             .get(app.test_cursor)
                         {
-                            Some(test_name) => {
-                                app.loading_lock = true;
-                                terminal.draw(|f| ui(f, &app))?;
+                            app.loading_lock = true;
+                            terminal.draw(|f| ui(f, &app))?;
+                            let output = Command::new("pytest")
+                                .arg(test_name)
+                                .arg("-vvv")
+                                .arg("-p")
+                                .arg("no:warnings")
+                                .env("PYTEST_ADDOPTS", "--color=yes")
+                                .output()
+                                .expect("failed to execute process");
 
-                                let output = Command::new("pytest")
-                                    .arg(test_name)
-                                    .arg("-vvv")
-                                    .arg("-p")
-                                    .arg("no:warnings")
-                                    .env("PYTEST_ADDOPTS", "--color=yes")
-                                    .output()
-                                    .expect("failed to execute process");
+                            if output.stdout.len() > 0 {
                                 let temp: String =
                                     String::from_utf8_lossy(&output.stdout).try_into().unwrap();
                                 app.test_stdout = temp;
                                 app.loading_lock = false;
+                            } else {
+                                let temp: String =
+                                    String::from_utf8_lossy(&output.stderr).try_into().unwrap();
+                                app.test_stdout = temp;
+                                app.loading_lock = false;
                             }
-                            None => {}
                         };
+                    }
+                    KeyCode::Char('r') => {
+                        let filters: Vec<String> = app
+                            .input
+                            .trim()
+                            .clone()
+                            .split(' ')
+                            .map(String::from)
+                            .collect();
+                        if let Some(test_name) = app
+                            .tests
+                            .iter()
+                            .filter(|t| filters.clone().into_iter().all(|f| t.contains(&f)))
+                            .cloned()
+                            .collect::<Vec<String>>()
+                            .get(app.test_cursor)
+                        {
+                            Command::new("gnome-terminal")
+                                .arg("--title=newWindow")
+                                .arg("--")
+                                .arg("zsh")
+                                .arg("-c")
+                                .arg(format!(
+                                    "pytest {} -vvv -p no:warnings; exec zsh",
+                                    test_name
+                                ))
+                                .spawn()
+                                .expect("run test in terminal command failed to start");
+                        }
+                    }
+                    KeyCode::Char('o') => {
+                        // gnome-terminal --title=newTab -- zsh -c "${EDITOR} Cargo.toml"
+                        let filters: Vec<String> = app
+                            .input
+                            .trim()
+                            .clone()
+                            .split(' ')
+                            .map(String::from)
+                            .collect();
+                        if let Some(test_name) = app
+                            .tests
+                            .iter()
+                            .filter(|t| filters.clone().into_iter().all(|f| t.contains(&f)))
+                            .cloned()
+                            .collect::<Vec<String>>()
+                            .get(app.test_cursor)
+                        {
+                            Command::new("gnome-terminal")
+                                .arg("--title=newTab")
+                                .arg("--")
+                                .arg("zsh")
+                                .arg("-c")
+                                .arg(format!(
+                                    "${} {}",
+                                    "EDITOR",
+                                    test_name.split("::").next().unwrap()
+                                ))
+                                .spawn()
+                                .expect("open file command failed to start");
+                        }
                     }
                     _ => {}
                 },
@@ -215,6 +282,21 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     KeyCode::Down => {
                         app.stdout_cursor = app.stdout_cursor.saturating_add(5);
                     }
+                    KeyCode::PageUp => {
+                        app.stdout_cursor = app.stdout_cursor.saturating_sub(half_of_height);
+                    }
+                    KeyCode::PageDown => {
+                        app.stdout_cursor = min(
+                            app.stdout_cursor.saturating_add(half_of_height),
+                            app.test_stdout.lines().count().saturating_sub(51),
+                        );
+                    }
+                    KeyCode::Home => {
+                        app.stdout_cursor = 0;
+                    }
+                    KeyCode::End => {
+                        app.stdout_cursor = app.test_stdout.lines().count().saturating_sub(51); 
+                    }
                     _ => {}
                 },
             }
@@ -229,7 +311,13 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
                 Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" to exit, "),
                 Span::styled("f", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to filter."),
+                Span::raw(" to filter, "),
+                Span::styled("hjkl", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" or arrows to navigate, "),
+                Span::styled("2", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to activate Output, "),
+                Span::styled("o", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" to open file with test."),
             ],
             Style::default(),
         ),
@@ -256,7 +344,8 @@ fn draw_filter_input<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
             _ => Style::default(),
         })
         .block(Block::default().borders(Borders::ALL).title("Filter"));
-    let count = Paragraph::new(format!("{}/{}", app.filtered_tests_count, app.tests.len())).alignment(tui::layout::Alignment::Right)
+    let count = Paragraph::new(format!("{}/{}", app.filtered_tests_count, app.tests.len()))
+        .alignment(tui::layout::Alignment::Right)
         .style(match app.input_mode {
             InputMode::FilterEditing => Style::default().fg(Color::Yellow),
             _ => Style::default(),
