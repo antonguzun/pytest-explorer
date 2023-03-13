@@ -4,8 +4,10 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use pytexp::app::{App, InputMode};
 use pytexp::parser;
-use std::{cmp::min, process::Command};
+use pytexp::external_calls;
+use std::cmp::min;
 use std::{error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -16,38 +18,6 @@ use tui::{
     Frame, Terminal,
 };
 use unicode_width::UnicodeWidthStr;
-
-enum InputMode {
-    TestScrolling,
-    OutputScrolling,
-    FilterEditing,
-}
-
-struct App {
-    input: String,
-    input_mode: InputMode,
-    test_stdout: String,
-    stdout_cursor: usize,
-    tests: Vec<String>,
-    filtered_tests_count: usize,
-    test_cursor: usize,
-    loading_lock: bool,
-}
-
-impl App {
-    fn new(tests: Vec<String>) -> App {
-        App {
-            input: String::new(),
-            input_mode: InputMode::TestScrolling,
-            test_stdout: String::new(),
-            stdout_cursor: 0,
-            tests,
-            filtered_tests_count: 0,
-            test_cursor: 0,
-            loading_lock: false,
-        }
-    }
-}
 
 fn main() -> Result<(), Box<dyn Error>> {
     // setup terminal
@@ -79,58 +49,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
-}
-
-fn load_filters_from_app(app: &App) -> Vec<String> {
-    app.input.trim().split(' ').map(String::from).collect()
-}
-
-fn is_accure_all_filters(filters: &[String], t: &str) -> bool {
-    filters.to_owned().iter().cloned().all(|f| t.contains(&f))
-}
-
-fn find_selected_test(app: &App) -> Option<String> {
-    let filters = load_filters_from_app(app);
-    app.tests
-        .iter()
-        .filter(|t| is_accure_all_filters(&filters, t))
-        .cloned()
-        .collect::<Vec<String>>()
-        .get(app.test_cursor)
-        .map(|s| s.to_string())
-}
-
-fn update_filtered_test_count(app: &mut App) {
-    let filters = load_filters_from_app(&*app);
-    app.filtered_tests_count = app
-        .tests
-        .iter()
-        .filter(|t| is_accure_all_filters(&filters, t))
-        .count();
-    app.test_cursor = min(app.test_cursor, app.filtered_tests_count.saturating_sub(1));
-}
-
-fn run_command_in_shell(command: &str) {
-    Command::new("gnome-terminal")
-        .arg("--title=newWindow")
-        .arg("--")
-        .arg("zsh")
-        .arg("-c")
-        .arg(command)
-        .spawn()
-        .expect("run test in terminal command failed to start");
-}
-
-fn run_test(test_name: String) -> std::process::Output {
-    let output = Command::new("pytest")
-        .arg(test_name)
-        .arg("-vvv")
-        .arg("-p")
-        .arg("no:warnings")
-        .env("PYTEST_ADDOPTS", "--color=yes")
-        .output()
-        .expect("failed to execute process");
-    output
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
@@ -176,10 +94,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         app.test_cursor = app.filtered_tests_count - 1;
                     }
                     KeyCode::Enter => {
-                        if let Some(test_name) = find_selected_test(&app) {
+                        if let Some(test_name) = app.find_selected_test() {
                             app.loading_lock = true;
                             terminal.draw(|f| ui(f, &app))?;
-                            let output = run_test(test_name);
+                            let output = external_calls::run_test(test_name);
 
                             if !output.stdout.is_empty() {
                                 let temp: String =
@@ -195,29 +113,29 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         };
                     }
                     KeyCode::Char('r') => {
-                        if let Some(test_name) = find_selected_test(&app) {
+                        if let Some(test_name) = app.find_selected_test() {
                             let command =
                                 format!("pytest {test_name} -vvv -p no:warnings; exec zsh");
-                            run_command_in_shell(&command);
+                            external_calls::run_command_in_shell(&command);
                         }
                     }
                     KeyCode::Char('o') => {
                         // gnome-terminal --title=newTab -- zsh -c "${EDITOR} Cargo.toml"
-                        if let Some(test_name) = find_selected_test(&app) {
+                        if let Some(test_name) = app.find_selected_test() {
                             let command =
                                 format!("${} {}", "EDITOR", test_name.split("::").next().unwrap());
-                            run_command_in_shell(&command);
+                            external_calls::run_command_in_shell(&command);
                         }
                     }
                     _ => {}
                 },
                 InputMode::FilterEditing => match key.code {
                     KeyCode::Char(c) => {
-                        update_filtered_test_count(&mut app);
+                        app.update_filtered_test_count();
                         app.input.push(c);
                     }
                     KeyCode::Backspace => {
-                        update_filtered_test_count(&mut app);
+                        app.update_filtered_test_count();
                         app.input.pop();
                     }
                     KeyCode::Esc
@@ -338,12 +256,12 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .direction(Direction::Horizontal)
         .split(area);
     let start_task_list = app.test_cursor.saturating_sub(area.height as usize / 2);
-    let filters = load_filters_from_app(app);
+    let filters = app.load_filters_from_app();
 
     let messages: Vec<ListItem> = app
         .tests
         .iter()
-        .filter(|t| is_accure_all_filters(&filters.clone(), t))
+        .filter(|t| App::is_accure_all_filters(&filters.clone(), t))
         .enumerate()
         .filter(|(i, _)| i >= &start_task_list && i < &(start_task_list + area.height as usize))
         .map(|(i, t)| {
