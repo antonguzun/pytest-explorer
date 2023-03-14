@@ -62,7 +62,7 @@ fn add_function(name: String, input: &mut Vec<String>) {
 }
 
 pub fn run() -> Result<Vec<String>> {
-    let mut paths = vec![];
+    let mut res = vec![];
     for entry in WalkDir::new("tests")
         .follow_links(false)
         .into_iter()
@@ -70,16 +70,12 @@ pub fn run() -> Result<Vec<String>> {
     {
         let f_name = entry.file_name().to_string_lossy();
         if f_name.ends_with(".py") & (f_name.ends_with("_test.py") | f_name.starts_with("test_")) {
-            paths.push(entry.into_path());
+            let path = entry.into_path();
+            let contents = std::fs::read_to_string(path.clone())?;
+            for r in parse_file(&contents)? {
+                res.push(format!("{}::{}", path.to_str().unwrap(), r));
+            }
         }
-    }
-    let mut res = vec![];
-    for path in paths {
-        // logs::emit_error(&path);
-        let contents = std::fs::read_to_string(path.clone())?;
-        parse_file(&contents)?
-            .into_iter()
-            .for_each(|r| res.push(format!("{}::{}", path.to_str().unwrap(), r)));
     }
     Ok(res)
 }
