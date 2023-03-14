@@ -12,6 +12,9 @@ pub fn parse_file(contents: &str) -> Result<Vec<String>> {
             ast::StmtKind::FunctionDef { name, .. } => {
                 add_function(name, &mut tests);
             }
+            ast::StmtKind::AsyncFunctionDef { name, .. } => {
+                add_function(name, &mut tests);
+            }
             ast::StmtKind::ClassDef {
                 name: class_name,
                 bases: _, //FIXME! add tests from bases
@@ -31,10 +34,18 @@ fn add_class(class_name: String, body: Vec<ast::Located<ast::StmtKind>>, input: 
         let mut tests_in_class = vec![];
         for m in body {
             let ast::Located { node: m_node, .. } = m;
-            if let ast::StmtKind::FunctionDef { name, .. } = m_node {
-                if name.starts_with("test_") {
-                    tests_in_class.push(format!("{}::{}", &class_name, name));
+            match m_node {
+                ast::StmtKind::FunctionDef { name, .. } => {
+                    if name.starts_with("test_") {
+                        tests_in_class.push(format!("{}::{}", &class_name, name));
+                    }
                 }
+                ast::StmtKind::AsyncFunctionDef { name, .. } => {
+                    if name.starts_with("test_") {
+                        tests_in_class.push(format!("{}::{}", &class_name, name));
+                    }
+                }
+                _ => (),
             }
         }
         if !tests_in_class.is_empty() {

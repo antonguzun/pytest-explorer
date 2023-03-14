@@ -1,3 +1,4 @@
+use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
@@ -14,7 +15,26 @@ use tui::{
     Terminal,
 };
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Collect test only without running ui
+    #[arg(short, long, action)]
+    collect_only: bool,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+    let args = Args::parse();
+    if args.collect_only {
+        let tests = parser::run()?;
+        let tests_count = tests.len();
+        for i in tests {
+            println!("{i}");
+        }
+        println!("collected {tests_count} tests");
+        return Ok(());
+    }
+
     // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
