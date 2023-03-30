@@ -137,12 +137,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     KeyCode::Char('o') => {
                         // gnome-terminal --title=newTab -- zsh -c "${EDITOR} Cargo.toml"
                         if let Some(test) = app.find_selected_test() {
-                            match external_calls::open_editor(&test) {
-                                Err(m) => {
-                                    app.error_message = m.to_string();
-                                    app.input_mode = InputMode::ErrorMessage;
-                                },
-                                _ => {},
+                            if let Err(m) = external_calls::open_editor(&test) {
+                                app.error_message = m.to_string();
+                                app.input_mode = InputMode::ErrorMessage;
                             };
                         }
                     }

@@ -48,7 +48,7 @@ impl App {
             .iter()
             .filter(|t| App::is_accure_all_filters(&filters, &t.full_path))
             .nth(self.test_cursor)
-            .map(|t| t.clone())
+            .cloned()
     }
 
     pub fn update_filtered_test_count(&mut self) {
