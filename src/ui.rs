@@ -43,6 +43,12 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
             ],
             Style::default(),
         ),
+        InputMode::ErrorMessage => (
+            vec![
+                Span::raw("Press Enter to continue"),
+            ],
+            Style::default(),
+        ),
     };
     let mut text = Text::from(Spans::from(msg));
     text.patch_style(style);
@@ -82,11 +88,11 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let messages: Vec<ListItem> = app
         .tests
         .iter()
-        .filter(|t| App::is_accure_all_filters(&filters.clone(), t))
+        .filter(|t| App::is_accure_all_filters(&filters.clone(), &t.full_path))
         .enumerate()
         .filter(|(i, _)| i >= &start_task_list && i < &(start_task_list + area.height as usize))
         .map(|(i, t)| {
-            let content = vec![Spans::from(Span::raw(t.to_string()))];
+            let content = vec![Spans::from(Span::raw(&t.full_path))];
             if i == app.test_cursor {
                 ListItem::new(content).style(Style::default().bg(Color::Yellow))
             } else {
@@ -154,6 +160,37 @@ fn draw_loading<B: Backend>(f: &mut Frame<B>, _: &App, area: Rect) {
     f.render_widget(block, loading_area);
 }
 
+fn draw_error<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Percentage(50),
+                Constraint::Length(5),
+                Constraint::Percentage(50),
+            ]
+            .as_ref(),
+        )
+        .split(area);
+
+    let loading_area = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Percentage(40),
+                Constraint::Length(30),
+                Constraint::Percentage(60),
+            ]
+            .as_ref(),
+        )
+        .split(popup_layout[1])[1];
+    let block = Paragraph::new(app.error_message.clone())
+        .alignment(tui::layout::Alignment::Center)
+        .block(Block::default().borders(Borders::ALL));
+    f.render_widget(Clear, loading_area); //this clears out the background
+    f.render_widget(block, loading_area);
+}
+
 pub fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
     let size = f.size();
     let chunks = Layout::default()
@@ -174,5 +211,8 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &App) {
     draw_test_with_output(f, app, chunks[2]);
     if app.loading_lock {
         draw_loading(f, app, size);
+    }
+    if !app.error_message.is_empty() {
+        draw_error(f, app, size);
     }
 }

@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let tests = parser::run()?;
         let tests_count = tests.len();
         for i in tests {
-            println!("{i}");
+            println!("{}", i.test_name);
         }
         println!("collected {tests_count} tests");
         return Ok(());
@@ -109,10 +109,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         app.test_cursor = app.filtered_tests_count.saturating_sub(1);
                     }
                     KeyCode::Enter => {
-                        if let Some(test_name) = app.find_selected_test() {
+                        if let Some(test) = app.find_selected_test() {
                             app.loading_lock = true;
                             terminal.draw(|f| ui(f, &app))?;
-                            let output = external_calls::run_test(test_name);
+                            let output = external_calls::run_test(test.full_path);
 
                             if !output.stdout.is_empty() {
                                 let temp: String =
@@ -128,18 +128,22 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         };
                     }
                     KeyCode::Char('r') => {
-                        if let Some(test_name) = app.find_selected_test() {
+                        if let Some(test) = app.find_selected_test() {
                             let command =
-                                format!("pytest {test_name} -vvv -p no:warnings; exec zsh");
+                                format!("pytest {} -vvv -p no:warnings; exec zsh", test.full_path);
                             external_calls::run_command_in_shell(&command);
                         }
                     }
                     KeyCode::Char('o') => {
                         // gnome-terminal --title=newTab -- zsh -c "${EDITOR} Cargo.toml"
-                        if let Some(test_name) = app.find_selected_test() {
-                            let command =
-                                format!("${} {}", "EDITOR", test_name.split("::").next().unwrap());
-                            external_calls::run_command_in_shell(&command);
+                        if let Some(test) = app.find_selected_test() {
+                            match external_calls::open_editor(&test) {
+                                Err(m) => {
+                                    app.error_message = m.to_string();
+                                    app.input_mode = InputMode::ErrorMessage;
+                                },
+                                _ => {},
+                            };
                         }
                     }
                     _ => {}
@@ -198,6 +202,18 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     KeyCode::End => {
                         app.stdout_cursor = app.test_stdout.lines().count().saturating_sub(51);
                     }
+                    _ => {}
+                },
+                InputMode::ErrorMessage => match key.code {
+                    KeyCode::Esc
+                    | KeyCode::Enter
+                    | KeyCode::Up
+                    | KeyCode::Down
+                    | KeyCode::End
+                    | KeyCode::Home
+                    | KeyCode::Tab
+                    | KeyCode::PageDown
+                    | KeyCode::PageUp => app.input_mode = InputMode::TestScrolling,
                     _ => {}
                 },
             }

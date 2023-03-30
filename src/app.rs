@@ -1,9 +1,11 @@
+use crate::entities::ParsedTest;
 use std::cmp::min;
 
 pub enum InputMode {
     TestScrolling,
     OutputScrolling,
     FilterEditing,
+    ErrorMessage,
 }
 
 pub struct App {
@@ -11,14 +13,15 @@ pub struct App {
     pub input_mode: InputMode,
     pub test_stdout: String,
     pub stdout_cursor: usize,
-    pub tests: Vec<String>,
+    pub tests: Vec<ParsedTest>,
     pub filtered_tests_count: usize,
     pub test_cursor: usize,
     pub loading_lock: bool,
+    pub error_message: String,
 }
 
 impl App {
-    pub fn new(tests: Vec<String>) -> App {
+    pub fn new(tests: Vec<ParsedTest>) -> App {
         App {
             input: String::new(),
             input_mode: InputMode::TestScrolling,
@@ -28,6 +31,7 @@ impl App {
             filtered_tests_count: 0,
             test_cursor: 0,
             loading_lock: false,
+            error_message: String::new(),
         }
     }
     pub fn load_filters_from_app(&self) -> Vec<String> {
@@ -38,15 +42,13 @@ impl App {
         filters.to_owned().iter().cloned().all(|f| t.contains(&f))
     }
 
-    pub fn find_selected_test(&self) -> Option<String> {
+    pub fn find_selected_test(&self) -> Option<ParsedTest> {
         let filters = self.load_filters_from_app();
         self.tests
             .iter()
-            .filter(|t| App::is_accure_all_filters(&filters, t))
-            .cloned()
-            .collect::<Vec<String>>()
-            .get(self.test_cursor)
-            .map(|s| s.to_string())
+            .filter(|t| App::is_accure_all_filters(&filters, &t.full_path))
+            .nth(self.test_cursor)
+            .map(|t| t.clone())
     }
 
     pub fn update_filtered_test_count(&mut self) {
@@ -54,7 +56,7 @@ impl App {
         self.filtered_tests_count = self
             .tests
             .iter()
-            .filter(|t| App::is_accure_all_filters(&filters, t))
+            .filter(|t| App::is_accure_all_filters(&filters, &t.full_path))
             .count();
         self.test_cursor = min(
             self.test_cursor,
