@@ -1,17 +1,38 @@
-use std::env;
-use std::process::{Command, Output};
-use anyhow::Result;
 use crate::entities::ParsedTest;
+use anyhow::bail;
+use anyhow::Result;
+use std::env;
+use std::process::Command;
+use std::process::Output;
+use std::process::Stdio;
 
-pub fn run_command_in_shell(command: &str) {
-    Command::new("gnome-terminal")
+fn open_in_gnome_terminal(command: &str) -> Result<()> {
+    let shell = env::var("SHELL")?;
+    let output = Command::new("gnome-terminal")
         .arg("--title=newWindow")
         .arg("--")
-        .arg("zsh")
+        .arg(format!("{}", shell))
         .arg("-c")
         .arg(command)
-        .spawn()
-        .expect("run test in terminal command failed to start");
+        .output()?;
+    match output.stderr.is_empty() {
+        true => Ok(()),
+        false => {
+            let error: String = String::from_utf8_lossy(&output.stderr).try_into()?;
+            bail!(error)
+        }
+    }
+}
+
+pub fn run_command_in_shell(command: &str) -> Result<()> {
+    match Command::new("gnome-terminal")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .status()
+    {
+        Ok(_) => open_in_gnome_terminal(command),
+        Err(_) => bail!("Not implemented"),
+    }
 }
 
 pub fn run_test(test_name: String) -> Output {
@@ -26,17 +47,23 @@ pub fn run_test(test_name: String) -> Output {
     output
 }
 
-pub fn open_editor(test: &ParsedTest) -> Result<(), anyhow::Error> {
+pub fn open_editor(test: &ParsedTest) -> Result<()> {
     let file = test.full_path.split("::").next().unwrap();
     let editor = env::var("EDITOR")?;
-    let mut command: String = String::new();
+    let command: String;
     if editor.as_str().contains("hx") {
         command = format!("${} {}:{}", "EDITOR", file, test.row_location)
     } else if editor.as_str().contains("vi") {
         command = format!("${} {} +{}", "EDITOR", file, test.row_location)
+    } else if editor.as_str().contains("nano") {
+        command = format!("${} +{} {}", "EDITOR", test.row_location, file)
+    } else if editor.as_str().contains("code") {
+        command = format!("${} -g {}:{}", "EDITOR", file, test.row_location)
+    } else if editor.as_str().contains("pycharm") {
+        command = format!("${} -line {} {}", "EDITOR", test.row_location, file)
     } else {
         command = format!("${} {}", "EDITOR", file)
     };
-    run_command_in_shell(&command);
+    run_command_in_shell(&command)?;
     Ok(())
 }

@@ -18,7 +18,7 @@ use tui::{
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Collect test only without running ui
+    /// Collect test without running ui
     #[arg(short, long, action)]
     collect_only: bool,
 }
@@ -131,15 +131,16 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         if let Some(test) = app.find_selected_test() {
                             let command =
                                 format!("pytest {} -vvv -p no:warnings; exec zsh", test.full_path);
-                            external_calls::run_command_in_shell(&command);
+                            if let Err(err) = external_calls::run_command_in_shell(&command) {
+                                app.set_error(err)
+                            }
                         }
                     }
                     KeyCode::Char('o') => {
                         // gnome-terminal --title=newTab -- zsh -c "${EDITOR} Cargo.toml"
                         if let Some(test) = app.find_selected_test() {
                             if let Err(m) = external_calls::open_editor(&test) {
-                                app.error_message = m.to_string();
-                                app.input_mode = InputMode::ErrorMessage;
+                                app.set_error(m)
                             };
                         }
                     }
@@ -204,13 +205,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                 InputMode::ErrorMessage => match key.code {
                     KeyCode::Esc
                     | KeyCode::Enter
+                    | KeyCode::Char('q')
                     | KeyCode::Up
                     | KeyCode::Down
                     | KeyCode::End
                     | KeyCode::Home
                     | KeyCode::Tab
                     | KeyCode::PageDown
-                    | KeyCode::PageUp => app.input_mode = InputMode::TestScrolling,
+                    | KeyCode::PageUp => app.clean_error(),
                     _ => {}
                 },
             }

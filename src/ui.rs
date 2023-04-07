@@ -43,12 +43,7 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
             ],
             Style::default(),
         ),
-        InputMode::ErrorMessage => (
-            vec![
-                Span::raw("Press Enter to continue"),
-            ],
-            Style::default(),
-        ),
+        InputMode::ErrorMessage => (vec![Span::raw("Press Enter to continue")], Style::default()),
     };
     let mut text = Text::from(Spans::from(msg));
     text.patch_style(style);
@@ -161,12 +156,13 @@ fn draw_loading<B: Backend>(f: &mut Frame<B>, _: &App, area: Rect) {
 }
 
 fn draw_error<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
+    let error_width = 70;
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
             [
                 Constraint::Percentage(50),
-                Constraint::Length(5),
+                Constraint::Length(10),
                 Constraint::Percentage(50),
             ]
             .as_ref(),
@@ -177,16 +173,29 @@ fn draw_error<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .direction(Direction::Horizontal)
         .constraints(
             [
-                Constraint::Percentage(40),
-                Constraint::Length(30),
-                Constraint::Percentage(60),
+                Constraint::Percentage(30),
+                Constraint::Length(error_width),
+                Constraint::Percentage(70),
             ]
             .as_ref(),
         )
         .split(popup_layout[1])[1];
-    let block = Paragraph::new(app.error_message.clone())
-        .alignment(tui::layout::Alignment::Center)
-        .block(Block::default().borders(Borders::ALL));
+    let lines = app
+        .error_message
+        .clone()
+        .chars()
+        .collect::<Vec<char>>()
+        .chunks(error_width.saturating_sub(1).into())
+        .map(|c| c.iter().collect::<String>())
+        .map(|s| Spans::from(s))
+        .collect::<Vec<Spans>>();
+    let style = Style::default().fg(Color::Red);
+    let block = Paragraph::new(lines).block(
+        Block::default()
+            .title("Error")
+            .borders(Borders::ALL)
+            .border_style(style),
+    );
     f.render_widget(Clear, loading_area); //this clears out the background
     f.render_widget(block, loading_area);
 }

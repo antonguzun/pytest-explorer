@@ -63,4 +63,13 @@ impl App {
             self.filtered_tests_count.saturating_sub(1),
         );
     }
+
+    pub fn set_error(&mut self, err: anyhow::Error) {
+        self.error_message = err.to_string();
+        self.input_mode = InputMode::ErrorMessage;
+    }
+    pub fn clean_error(&mut self){
+        self.input_mode = InputMode::TestScrolling;
+        self.error_message = String::new();
+    }
 }
