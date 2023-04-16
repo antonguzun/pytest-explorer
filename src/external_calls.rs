@@ -37,10 +37,13 @@ pub fn run_command_in_shell(command: &str) -> Result<()> {
     // we need to restore venv, cause we lost it after new terminal creation
     let pwd = env::var("PWD")?;
     let venv = env::var("VIRTUAL_ENV")?;
-    let wrapped_command = format!(
-        "\'tell application \"Terminal\" to do script \"cd {pwd} && {venv}/bin/{command}\"\'"
-    );
-    let output = Command::new("osascript").arg("-e").arg(command).output()?;
+    let wrapped_command =
+        format!("tell application \"Terminal\" to do script \"cd {pwd} && {venv}/bin/{command}\"");
+    println!(&wrapped_command);
+    let output = Command::new("osascript")
+        .arg("-e")
+        .arg(wrapped_command)
+        .output()?;
     match output.stderr.is_empty() {
         true => Ok(()),
         false => {
