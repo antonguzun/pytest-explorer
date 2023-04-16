@@ -6,7 +6,15 @@ use std::process::Command;
 use std::process::Output;
 use std::process::Stdio;
 
-fn open_in_gnome_terminal(command: &str) -> Result<()> {
+#[cfg(target_os = "linux")]
+pub fn run_command_in_shell(command: &str) -> Result<()> {
+    if let Err(_) = Command::new("gnome-terminal")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .status()
+    {
+        bail!("Not implemented for your terminal")
+    }
     let shell = env::var("SHELL")?;
     let output = Command::new("gnome-terminal")
         .arg("--title=newWindow")
@@ -24,15 +32,9 @@ fn open_in_gnome_terminal(command: &str) -> Result<()> {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 pub fn run_command_in_shell(command: &str) -> Result<()> {
-    match Command::new("gnome-terminal")
-        .arg("--version")
-        .stdout(Stdio::null())
-        .status()
-    {
-        Ok(_) => open_in_gnome_terminal(command),
-        Err(_) => bail!("Not implemented"),
-    }
+    bail!("Not implemented for your os")
 }
 
 pub fn run_test(test_name: String) -> Output {

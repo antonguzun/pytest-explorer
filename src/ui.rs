@@ -13,37 +13,58 @@ use unicode_width::UnicodeWidthStr;
 
 fn draw_help<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let (msg, style) = match app.input_mode {
-        InputMode::TestScrolling | InputMode::OutputScrolling => (
+        InputMode::TestScrolling => (
             vec![
-                Span::raw("Press "),
-                Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to exit, "),
-                Span::styled("f", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to filter, "),
-                Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to run test, "),
-                Span::styled("r", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to run test in new shell, "),
-                Span::styled("hjkl", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" or arrows to navigate, "),
-                Span::styled("2", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to activate Output, "),
+                Span::raw("EXIT "),
+                Span::styled("q ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("| FILTER "),
+                Span::styled("f ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("| RUN TEST "),
+                Span::styled("Enter ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("| RUN TEST IN SHELL "),
+                Span::styled("r ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("| NAVIGATE "),
+                Span::styled(
+                    "hjkl/arrows PgUp/PgDown/Home/End ",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+                Span::raw("| ACTIVATE OUTPUT "),
+                Span::styled("2 ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("| OPEN FILE "),
                 Span::styled("o", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to open file with test."),
+            ],
+            Style::default(),
+        ),
+        InputMode::OutputScrolling => (
+            vec![
+                Span::raw("EXIT "),
+                Span::styled("q ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("| FILTER "),
+                Span::styled("f ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("| NAVIGATE "),
+                Span::styled(
+                    "hjkl/arrows PgUp/PgDown/Home/End ",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
+                Span::raw("| ACTIVATE TESTS LIST "),
+                Span::styled("1 ", Style::default().add_modifier(Modifier::BOLD)),
             ],
             Style::default(),
         ),
         InputMode::FilterEditing => (
             vec![
-                Span::raw("Press "),
-                Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to stop editing, "),
-                Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(" to record the message"),
+                Span::raw("STOP EDITING "),
+                Span::styled("Esc/Enter ", Style::default().add_modifier(Modifier::BOLD)),
             ],
             Style::default(),
         ),
-        InputMode::ErrorMessage => (vec![Span::raw("Press Enter to continue")], Style::default()),
+        InputMode::ErrorMessage => (
+            vec![
+                Span::raw("CLOSE ERROR MESSAGE "),
+                Span::styled("Esc/Ente/q ", Style::default().add_modifier(Modifier::BOLD)),
+            ],
+            Style::default(),
+        ),
     };
     let mut text = Text::from(Spans::from(msg));
     text.patch_style(style);
@@ -71,6 +92,7 @@ fn draw_filter_input<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         f.set_cursor(area.x + app.input.width() as u16 + 1, area.y + 1)
     }
 }
+
 fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let constraints = vec![Constraint::Percentage(50), Constraint::Percentage(50)];
     let chunks = Layout::default()
