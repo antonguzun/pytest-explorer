@@ -39,7 +39,6 @@ pub fn run_command_in_shell(command: &str) -> Result<()> {
     let venv = env::var("VIRTUAL_ENV")?;
     let wrapped_command =
         format!("tell application \"Terminal\" to do script \"cd {pwd} && {venv}/bin/{command}\"");
-    println!(&wrapped_command);
     let output = Command::new("osascript")
         .arg("-e")
         .arg(wrapped_command)
@@ -70,6 +69,7 @@ pub fn run_test(test_name: String) -> Output {
     output
 }
 
+#[cfg(target_os = "linux")]
 pub fn open_editor(test: &ParsedTest) -> Result<()> {
     let file = test.full_path.split("::").next().unwrap();
     let editor = env::var("EDITOR")?;
@@ -89,4 +89,16 @@ pub fn open_editor(test: &ParsedTest) -> Result<()> {
     };
     run_command_in_shell(&command)?;
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub fn open_editor(test: &ParsedTest) -> Result<()> {
+    let file = test.full_path.split("::").next().unwrap();
+    Command::new("open").arg("-t").arg(file).output()?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub fn open_editor(test: &ParsedTest) -> Result<()> {
+    bail!("Not implemented for your os")
 }
