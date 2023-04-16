@@ -111,7 +111,7 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .map(|(i, t)| {
             let content = vec![Spans::from(Span::raw(&t.full_path))];
             if i == app.test_cursor {
-                ListItem::new(content).style(Style::default().bg(Color::Yellow))
+                ListItem::new(content).style(Style::default().fg(Color::Black).bg(Color::Yellow))
             } else {
                 ListItem::new(content)
             }
