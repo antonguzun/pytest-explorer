@@ -6,7 +6,7 @@ use tui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap},
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
@@ -109,7 +109,18 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
         .enumerate()
         .filter(|(i, _)| i >= &start_task_list && i < &(start_task_list + area.height as usize))
         .map(|(i, t)| {
-            let content = vec![Spans::from(Span::raw(&t.full_path))];
+            let content;
+            let test_line_width = chunks[0].width.saturating_sub(2);  // sub 2 cause of borders
+            if t.full_path.len() > test_line_width.into() {
+                content = t.full_path.chars()
+                    .collect::<Vec<char>>()
+                    .chunks(test_line_width.into())
+                    .map(|c| Spans::from(Span::raw(c.clone().iter().collect::<String>())))
+                    .collect();
+            } else {
+                content = vec![Spans::from(Span::raw(&t.full_path))];
+            }
+
             if i == app.test_cursor {
                 ListItem::new(content).style(Style::default().fg(Color::Black).bg(Color::Yellow))
             } else {
@@ -132,18 +143,20 @@ fn draw_test_with_output<B: Backend>(f: &mut Frame<B>, app: &App, area: Rect) {
     let text = app.test_stdout.clone().into_text().unwrap();
     let start_stdout_list = min(app.stdout_cursor, text.lines.len());
     let stop_stdout_list = min(start_stdout_list + area.height as usize, text.lines.len());
-    let text_to_show = text.lines[start_stdout_list..stop_stdout_list].to_vec();
+    let text_to_show = Text::from(text.lines[start_stdout_list..stop_stdout_list].to_vec());
     let test_style = match app.input_mode {
         InputMode::OutputScrolling => Style::default().fg(Color::Yellow),
         _ => Style::default(),
     };
-    let test_outout = Paragraph::new(text_to_show).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(test_style)
-            .title("Output"),
-    );
-    f.render_widget(test_outout, chunks[1]);
+    let test_output = Paragraph::new(text_to_show)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(test_style)
+                .title("Output"),
+        )
+        .wrap(Wrap { trim: true });
+    f.render_widget(test_output, chunks[1]);
 }
 
 fn draw_loading<B: Backend>(f: &mut Frame<B>, _: &App, area: Rect) {
