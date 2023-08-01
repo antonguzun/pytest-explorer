@@ -7,13 +7,13 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-      - master
-    tags:
-      - '*'
   pull_request:
   workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Tag'
+        required: false
+        type: boolean
 
 permissions:
   contents: read
