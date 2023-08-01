@@ -1,6 +1,9 @@
 # pytest-explorer
 Fast terminal ui pytest explorer.
 
+![GitHub Workflow Status (with event)](https://img.shields.io/github/actions/workflow/status/antonguzun/pytest-explorer/CI.yml)
+![PyPI](https://img.shields.io/pypi/v/pytest-explorer)
+
 ![image](https://user-images.githubusercontent.com/23196976/224422665-924eb367-38d4-41e4-8c11-ef1c39a4c73d.png)
 
 ## Bench test collecting on aiohttp tests
